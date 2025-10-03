@@ -1,8 +1,9 @@
-hide_github_icon = """
+hide_github_icon = “”"
 #GithubIcon {
-  visibility: hidden;
+visibility: hidden;
 }
-"""
+“”"
+st.markdown(hide_github_icon, unsafe_allow_html=True)
 # bessim.py (Tanıtım için sade: Ay Sonu = Tüm Kategoriler, bins=50 sabit, λ=1..5, trials=5000)
 import streamlit as st
 import pandas as pd
