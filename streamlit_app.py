@@ -1,10 +1,3 @@
-hide_github_icon = “”"
-#GithubIcon {
-visibility: hidden;
-}
-“”"
-st.markdown(hide_github_icon, unsafe_allow_html=True)
-# bessim.py (Tanıtım için sade: Ay Sonu = Tüm Kategoriler, bins=50 sabit, λ=1..5, trials=5000)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,7 +5,13 @@ import random
 from datetime import datetime, timedelta
 import altair as alt
 
-st.set_page_config(page_title="BES Yuvarla-Ekle Simülatörü (Mini/Midi/Maxi)", layout="wide")
+hide_github_icon = """
+#GithubIcon {
+  visibility: hidden;
+}
+"""
+st.markdown(hide_github_icon, unsafe_allow_html=True)
+st.set_page_config(page_title="Üstü BES'te Kalsın", layout="wide")
 
 # ---------- yardımcılar ----------
 def next_multiple(x: int, base: int) -> int:
