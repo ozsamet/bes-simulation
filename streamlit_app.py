@@ -1,4 +1,4 @@
-# bessim.py (Ay Sonu Toplam Katkı Dağılımı sekmesi; bonus yok, Maxi 25->20)
+# bessim.py (Tanıtım için sade: Ay Sonu = Tüm Kategoriler, bins=50 sabit, λ=1..5, trials=5000)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -76,7 +76,7 @@ def simulate_group(group_name, days, start_date, daily_tx_target, seed=None):
 
             mini = contribution(amount, 5)
             midi = contribution(amount, 10)
-            maxi = contribution(amount, 20)
+            maxi = contribution(amount, 20)  # Maxi 20
 
             amt_int = int(round(amount))
             rows.append({
@@ -114,49 +114,46 @@ def fmt_money(df):
         if c.endswith("_TL"): df[c] = df[c].apply(tl)
     return df
 
-# ---------- yeni: Ay sonu toplam katkı dağılımı (Market) ----------
-def simulate_month_totals_market(profile_name: str,
-                                 days_in_month: int = 30,
-                                 mean_tx_per_day: float = 1.5,
-                                 trials: int = 1000,
-                                 seed: int | None = None) -> pd.DataFrame:
+# ---------- tek paket için aylık toplam simülasyonu (TÜM KATEGORİLER) ----------
+PACKAGE_BASES = {"Mini (5)": 5, "Midi (10)": 10, "Maxi (20)": 20}
+
+def simulate_month_total_one(mean_tx_per_day: float,
+                             days_in_month: int = 30,
+                             trials: int = 5000,   # 5000 deneme
+                             seed: int | None = 123,
+                             profile_name: str = "Orta Gelir",
+                             package_label: str = "Midi (10)") -> pd.DataFrame:
     """
-    Sadece Market kategorisi: her trial bir 'ay'.
-    Her günün işlem adedi ~ Poisson(mean_tx_per_day).
-    Dönüş: her trial için Mini/Midi/Maxi toplam katkılar ve toplam işlem sayısı.
+    Tüm kategorilerden, CATEGORIES ağırlıklarına göre işlem üretir.
+    Seçilen paket için ay sonu toplam katkı dağılımını döner.
     """
     if seed is not None:
         np.random.seed(seed); random.seed(seed)
-    prof = INCOME_PROFILES[profile_name]
 
-    totals = []
+    prof = INCOME_PROFILES[profile_name]
+    base = PACKAGE_BASES[package_label]
+    cats, probs = zip(*CATEGORIES)
+
+    rows = []
     for t in range(trials):
-        mini_sum = midi_sum = maxi_sum = 0.0
+        total = 0.0
         tx_count = 0
         for _ in range(days_in_month):
-            n_tx = np.random.poisson(mean_tx_per_day)
+            n_tx = int(mean_tx_per_day)
             if n_tx <= 0:
                 continue
             for _ in range(n_tx):
+                cat = random.choices(cats, weights=probs, k=1)[0]
                 amount = float(np.random.lognormal(mean=prof["lognorm_mean"], sigma=prof["lognorm_sd"]))
-                amount *= CATEGORY_SCALE["Market"] * prof["spend_mult"]
+                amount *= CATEGORY_SCALE.get(cat, 1.0) * prof["spend_mult"]
                 amount = round(max(5.0, amount), 2)
-
-                mini_sum += contribution(amount, 5)
-                midi_sum += contribution(amount, 10)
-                maxi_sum += contribution(amount, 20)
+                total += contribution(amount, base)
             tx_count += n_tx
-        totals.append({
-            "trial": t+1,
-            "Mini_Toplam_TL": round(mini_sum, 2),
-            "Midi_Toplam_TL": round(midi_sum, 2),
-            "Maxi_Toplam_TL": round(maxi_sum, 2),
-            "Toplam_Islem": tx_count
-        })
-    return pd.DataFrame(totals)
+        rows.append({"trial": t+1, "Toplam_Katki_TL": round(total, 2), "Toplam_Islem": tx_count})
+    return pd.DataFrame(rows)
 
 # ---------- UI: 2 sekme ----------
-tab1, tab2 = st.tabs(["🧪 Simülatör", "📈 Ay Sonu Dağılımı (Market)"])
+tab1, tab2 = st.tabs(["🧪 Simülatör", "📈 Ay Sonu Dağılımı (Tüm Kategoriler)"])
 
 with tab1:
     st.title("🪙 BES Yuvarla-Ekle Simülatörü — Mini(5) / Midi(10) / Maxi(20)")
@@ -261,84 +258,78 @@ with tab1:
     st.caption("Not: Katkı hesabında tutar önce tam TL'ye yuvarlanır. Paket bazları: Mini=5 TL, Midi=10 TL, Maxi=20 TL.")
 
 with tab2:
-    st.title("📈 Ay Sonu Toplam Katkı Dağılımı — Market")
-    col1, col2, col3, col4 = st.columns([1,1,1,1])
-    with col1:
-        prof_name = st.selectbox("Gelir Profili", list(INCOME_PROFILES.keys()), index=1)  # Orta Gelir
-    with col2:
-        days_in_month = st.number_input("Ay (gün)", min_value=20, max_value=35, value=30, step=1)
-    with col3:
-        mean_tx = st.number_input("Günlük ort. Market işlemi (λ)", min_value=0.0, value=1.5, step=0.1)
-    with col4:
-        trials = st.number_input("Deneme sayısı (trial)", min_value=200, max_value=20000, value=1000, step=100)
+    st.title("📈 Ay Sonu Dağılımı (Tüm Kategoriler)")
 
-    seed2 = st.number_input("Seed (dağılım)", min_value=0, value=123, step=1)
+    # Kullanıcıya sadece 2 seçim: Paket ve günlük işlem adedi (1–5)
+    c1, c2 = st.columns([1,1])
+    with c1:
+        package_label = st.selectbox("Paket", ["Mini (5)", "Midi (10)", "Maxi (20)"], index=1)
+    with c2:
+        mean_tx = st.select_slider(
+            "Günlük işlem adedi",
+            options=[1, 2, 3, 4, 5],
+            value=2,
+            help="Günlük ortalama toplam işlem adedi (λ)."
+        )
 
-    df_month = simulate_month_totals_market(
-        profile_name=prof_name,
-        days_in_month=int(days_in_month),
+    # Tanıtım varsayılanları (gizli)
+    DAYS = 30
+    TRIALS = 5000
+    SEED = 123
+    PROFILE = "Orta Gelir"
+
+    df_month_one = simulate_month_total_one(
         mean_tx_per_day=float(mean_tx),
-        trials=int(trials),
-        seed=int(seed2)
+        days_in_month=DAYS,
+        trials=TRIALS,
+        seed=SEED,
+        profile_name=PROFILE,
+        package_label=package_label
     )
 
-    st.markdown("**Ay sonu toplam katkı (TL) dağılımları**")
-    # Uzun formata çevir
-    plot_df = df_month.melt(id_vars=["trial","Toplam_Islem"],
-                            value_vars=["Mini_Toplam_TL","Midi_Toplam_TL","Maxi_Toplam_TL"],
-                            var_name="Paket", value_name="Toplam_Katki_TL")
-    paket_map = {"Mini_Toplam_TL":"Mini (5)", "Midi_Toplam_TL":"Midi (10)", "Maxi_Toplam_TL":"Maxi (20)"}
-    plot_df["Paket"] = plot_df["Paket"].map(paket_map)
+    st.markdown(f"**Profil:** {PROFILE} • **Ay:** {DAYS} gün • **Deneme:** {TRIALS}")
 
-    # Histogram + yoğunluk eğrisi (Altair)
-    bins = st.slider("Histogram kutu sayısı", 10, 80, 30, step=5)
-    base = alt.Chart(plot_df)
+    # Histogram + yoğunluk (tek paket) — BINS SABİT = 50
+    BINS = 50
+    base = alt.Chart(df_month_one)
 
-    hist = base.mark_bar(opacity=0.5).encode(
-        x=alt.X("Toplam_Katki_TL:Q", bin=alt.Bin(maxbins=bins), title="Ay Sonu Toplam Katkı (TL)"),
+    hist = base.mark_bar(opacity=0.55).encode(
+        x=alt.X("Toplam_Katki_TL:Q", bin=alt.Bin(maxbins=BINS), title="Ay Sonu Toplam Katkı (TL)"),
         y=alt.Y("count():Q", title="Adet"),
-        tooltip=["Paket:N","count():Q"]
-    ).properties(height=260)
+        tooltip=["count():Q"]
+    ).properties(height=280)
 
     density = base.transform_density(
         "Toplam_Katki_TL",
-        groupby=["Paket"],
         as_=["Toplam_Katki_TL","Yoğunluk"]
     ).mark_line().encode(
         x="Toplam_Katki_TL:Q",
         y="Yoğunluk:Q",
-        tooltip=["Paket:N","Toplam_Katki_TL:Q","Yoğunluk:Q"]
+        tooltip=["Toplam_Katki_TL:Q","Yoğunluk:Q"]
     )
 
-    st.altair_chart((hist.encode(color="Paket:N") + density.encode(color="Paket:N")).resolve_scale(y='independent'), use_container_width=True)
+    st.altair_chart(hist + density, use_container_width=True)
 
-    # İstatistikler
-    st.subheader("📌 Özet İstatistikler (Ay Sonu)")
-    stats = plot_df.groupby("Paket")["Toplam_Katki_TL"].agg(
-        Ortalama="mean",
-        Medyan="median",
-        P5=lambda s: s.quantile(0.05),
-        P25=lambda s: s.quantile(0.25),
-        P75=lambda s: s.quantile(0.75),
-        P95=lambda s: s.quantile(0.95),
-        Max="max",
-        Min="min"
-    ).round(2).reset_index()
+    # Özet metrikler (tek satır, anlaşılır)
+    st.subheader("📌 Özet (Ay Sonu)")
+    s = df_month_one["Toplam_Katki_TL"].describe()
+    p5  = float(df_month_one["Toplam_Katki_TL"].quantile(0.05))
+    p95 = float(df_month_one["Toplam_Katki_TL"].quantile(0.95))
 
-    # İşlem sayısı dağılımı da bilgi amaçlı
-    ops = df_month["Toplam_Islem"].describe().to_frame(name="Toplam İşlem").T.round(2)
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Medyan", tl(float(df_month_one["Toplam_Katki_TL"].median())))
+    m2.metric("Ortalama", tl(float(s["mean"])))
+    m3.metric("P5–P95", f"{tl(p5)} — {tl(p95)}")
 
-    cA, cB = st.columns([2,1])
-    with cA:
-        st.dataframe(stats, use_container_width=True)
-    with cB:
-        st.markdown("**İşlem Sayısı (ay)**")
-        st.table(ops)
+    st.markdown("**İşlem Sayısı (ay)**")
+    st.table(df_month_one["Toplam_Islem"].describe().to_frame(name="Toplam İşlem").T.round(2))
 
     st.divider()
     st.download_button(
         "Ay Sonu Toplam Katkılar (CSV)",
-        data=df_month.to_csv(index=False).encode("utf-8"),
-        file_name="ay_sonu_toplam_katki_dagilimi_market.csv",
+        data=df_month_one.to_csv(index=False).encode("utf-8"),
+        file_name=f"ay_sonu_toplam_{package_label.replace(' ','').replace('(','').replace(')','')}_tum_kategoriler.csv",
         mime="text/csv"
     )
+
+    st.caption("Not: Tutar önce tam TL'ye yuvarlanır; paket bazları: Mini=5 TL, Midi=10 TL, Maxi=20 TL.")
