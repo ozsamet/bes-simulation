@@ -10,7 +10,6 @@ hide_github_icon = """
   visibility: hidden;
 }
 """
-st.markdown(hide_github_icon, unsafe_allow_html=True)
 st.set_page_config(page_title="Üstü BES'te Kalsın", layout="wide")
 
 # ---------- yardımcılar ----------
@@ -149,7 +148,8 @@ def simulate_month_total_one(mean_tx_per_day: float,
                 continue
             for _ in range(n_tx):
                 cat = random.choices(cats, weights=probs, k=1)[0]
-                amount = float(np.random.lognormal(mean=prof["lognorm_mean"], sigma=prof["lognorm_sd"]))
+                amount = float(np.random.lognormal(mean=prof["lognorm_mean"], sigma=prof["lognorm_sd"]
+                                                  )
                 amount *= CATEGORY_SCALE.get(cat, 1.0) * prof["spend_mult"]
                 amount = round(max(5.0, amount), 2)
                 total += contribution(amount, base)
@@ -158,7 +158,7 @@ def simulate_month_total_one(mean_tx_per_day: float,
     return pd.DataFrame(rows)
 
 # ---------- UI: 2 sekme ----------
-tab1, tab2 = st.tabs(["🧪 Simülatör", "📈 Ay Sonu Dağılımı (Tüm Kategoriler)"])
+tab1, tab2 = st.tabs(["🧪 Simülatör", "📈 Ay Sonu Dağılımı"])
 
 with tab1:
     st.title("🪙 BES Yuvarla-Ekle Simülatörü — Mini(5) / Midi(10) / Maxi(20)")
@@ -265,7 +265,7 @@ with tab1:
 with tab2:
     st.title("📈 Ay Sonu Dağılımı (Tüm Kategoriler)")
 
-    # Kullanıcıya sadece 2 seçim: Paket ve günlük işlem adedi (1–5)
+    # seçimler
     c1, c2 = st.columns([1,1])
     with c1:
         package_label = st.selectbox("Paket", ["Mini (5)", "Midi (10)", "Maxi (20)"], index=1)
@@ -277,7 +277,7 @@ with tab2:
             help="Günlük ortalama toplam işlem adedi (λ)."
         )
 
-    # Tanıtım varsayılanları (gizli)
+    # Tanıtım varsayılanları 
     DAYS = 30
     TRIALS = 5000
     SEED = 123
@@ -294,7 +294,7 @@ with tab2:
 
     st.markdown(f"**Profil:** {PROFILE} • **Ay:** {DAYS} gün • **Deneme:** {TRIALS}")
 
-    # Histogram + yoğunluk (tek paket) — BINS SABİT = 50
+    # Histogram + yoğunluk 
     BINS = 50
     base = alt.Chart(df_month_one)
 
@@ -315,7 +315,7 @@ with tab2:
 
     st.altair_chart(hist + density, use_container_width=True)
 
-    # Özet metrikler (tek satır, anlaşılır)
+    # Özet metrikler
     st.subheader("📌 Özet (Ay Sonu)")
     s = df_month_one["Toplam_Katki_TL"].describe()
     p5  = float(df_month_one["Toplam_Katki_TL"].quantile(0.05))
