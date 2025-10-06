@@ -148,8 +148,7 @@ def simulate_month_total_one(mean_tx_per_day: float,
                 continue
             for _ in range(n_tx):
                 cat = random.choices(cats, weights=probs, k=1)[0]
-                amount = float(np.random.lognormal(mean=prof["lognorm_mean"], sigma=prof["lognorm_sd"]
-                                                  )
+                amount = float(np.random.lognormal(mean=prof["lognorm_mean"], sigma=prof["lognorm_sd"])
                 amount *= CATEGORY_SCALE.get(cat, 1.0) * prof["spend_mult"]
                 amount = round(max(5.0, amount), 2)
                 total += contribution(amount, base)
