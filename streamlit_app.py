@@ -35,7 +35,7 @@ TRIALS = 2000
 SEED = 123
 DAYS = 31
 
-# ------------------ HIZLI & VEKTÖRİZE SİMÜLASYON ------------------
+# ------------------  VEKTÖRİZE SİMÜLASYON ------------------
 @st.cache_data(show_spinner=False, ttl=3600, max_entries=32)
 def simulate_month_poisson(base: int,
                            mean_tx_per_day: float,
