@@ -159,4 +159,93 @@ with k2:
 with k3:
     st.markdown('<div class="kpi">', unsafe_allow_html=True)
     st.metric(label=f">%≥{thresholds[2]} TL olasılığı", value=f"{probs[thresholds[2]]:.1%}")
-    st.markdown('</div>'
+    st.markdown('</div>', unsafe_allow_html=True)
+with k4:
+    st.markdown('<div class="kpi">', unsafe_allow_html=True)
+    # hızlı çekici cümle
+    if probs[thresholds[2]] >= 0.5:
+        punch = "Yüksek ihtimal!"
+    elif probs[thresholds[2]] >= 0.2:
+        punch = "Kayda değer ihtimal"
+    else:
+        punch = "Düşük ihtimal"
+    st.metric(label=f"50 TL üzeri için özet", value=punch, delta=f"%≥{thresholds[2]} = {probs[thresholds[2]]:.1%}")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown("---")
+
+# ---------- GÖRSEL: histogram + yoğunluk ----------
+base = alt.Chart(df_month_one)
+
+hist = base.mark_bar(opacity=0.55, cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+    x=alt.X("Toplam_Katki_TL:Q", bin=alt.Bin(maxbins=50), title="Ay Sonu Toplam Katkı (TL)"),
+    y=alt.Y("count():Q", title="Adet"),
+    tooltip=[alt.Tooltip("count():Q", title="Deneme sayısı")]
+).properties(height=320)
+
+density = base.transform_density(
+    "Toplam_Katki_TL",
+    as_=["Toplam_Katki_TL","Yoğunluk"]
+).mark_line(strokeWidth=3).encode(
+    x="Toplam_Katki_TL:Q",
+    y="Yoğunluk:Q",
+    tooltip=[alt.Tooltip("Toplam_Katki_TL:Q", title="Katkı"), alt.Tooltip("Yoğunluk:Q", title="Yoğunluk")]
+)
+
+# median & mean çizgileri
+rule_median = alt.Chart(pd.DataFrame({"x":[median_v]})).mark_rule(color="#0b3d91", strokeWidth=2).encode(x="x:Q")
+rule_mean = alt.Chart(pd.DataFrame({"x":[mean_v]})).mark_rule(color="#e11d48", strokeWidth=2, strokeDash=[4,4]).encode(x="x:Q")
+
+# Etiketler için text layer
+txt_median = alt.Chart(pd.DataFrame({"x":[median_v], "label":[f"Medyan: {tl(median_v)}"]})).mark_text(
+    align="left", dx=5, dy=-10, fontWeight="bold", color="#0b3d91"
+).encode(x="x:Q", text="label:N")
+
+txt_mean = alt.Chart(pd.DataFrame({"x":[mean_v], "label":[f"Ortalama: {tl(mean_v)}"]})).mark_text(
+    align="left", dx=5, dy=10, fontWeight="bold", color="#e11d48"
+).encode(x="x:Q", text="label:N")
+
+chart = (hist + density + rule_median + rule_mean + txt_median + txt_mean).properties(title=f"{package_label} • Dağılım (n={TRIALS})")
+st.altair_chart(chart, use_container_width=True)
+
+
+st.markdown("**Hızlı Özet — Yüzdelikler ve Olasılıklar**")
+pct_df = pd.DataFrame({
+    "Ölçüt": ["P0 (min)", "P5", "P10", "Medyan", "P75", "P90", "P95", "Maks"],
+    "Değer (TL)": [
+        df_month_one["Toplam_Katki_TL"].min(),
+        df_month_one["Toplam_Katki_TL"].quantile(0.05),
+        df_month_one["Toplam_Katki_TL"].quantile(0.10),
+        df_month_one["Toplam_Katki_TL"].quantile(0.50),
+        df_month_one["Toplam_Katki_TL"].quantile(0.75),
+        df_month_one["Toplam_Katki_TL"].quantile(0.90),
+        df_month_one["Toplam_Katki_TL"].quantile(0.95),
+        df_month_one["Toplam_Katki_TL"].max()
+    ]
+})
+pct_df["Değer (TL)"] = pct_df["Değer (TL)"].apply(lambda x: tl(float(x)))
+st.table(pct_df)
+
+# olasılık tablosu (eşikler)
+st.markdown("**Eşik Bazlı Olasılıklar**")
+thr = st.slider("İlgilenilen Eşik (TL) — olasılığı göster", min_value=0, max_value=int(max(200, max_v)), value=50, step=5)
+prob_thr = (df_month_one["Toplam_Katki_TL"] >= thr).mean()
+st.metric(label=f"% trials >= {thr} TL", value=f"{prob_thr:.1%}")
+
+st.markdown("---")
+
+st.markdown(
+    """
+    **Sunum notları (kısa):**
+    - Medyan: izleyiciye beklenen tipik aylık katkıyı söyler.
+    - Ortalama: birkaç büyük katkının etkisini gösterir (outlier'lar etkiler).
+    - P5–P95 aralığı: risk bandı; izleyiciye "çoğunlukla bu aralıkta kalır" mesajı verir.
+    - Eşik olasılıkları (ör. %≥50 TL) izleyiciyi doğrudan etkiler — bunu büyük puntolarla vurgulayın.
+    """
+)
+
+st.markdown(
+    f"<div style='color:#6b7280;font-size:12px;margin-top:12px'>Veri: simülasyon (log-normal spend model). Oluşturuldu: {datetime.utcnow().date().isoformat()}</div>",
+    unsafe_allow_html=True
+)
+
