@@ -5,7 +5,7 @@ import random
 import altair as alt
 from datetime import datetime
 
-st.set_page_config(page_title="Üstü BES'te Kalsın — Ay Sonu Dağılımı", layout="wide")
+st.set_page_config(page_title="Üstü BES'te Kalsın Simülasyonu", layout="wide")
 
 # ---------- yardımcılar ----------
 def next_multiple(x: int, base: int) -> int:
@@ -93,7 +93,7 @@ k1.metric("Tipik Aylık Katkı (Medyan)", tl(median_v))
 k2.metric("Aylık Ortalama Katkı", tl(mean_v))
 k3.metric("Dağılım Bandı (P5–P95)", f"{tl(float(p5))} — {tl(float(p95))}")
 
-# Grafik (histogram + yoğunluk + işaretçiler)
+
 base_chart = alt.Chart(df)
 hist = base_chart.mark_bar(opacity=0.6).encode(
     x=alt.X("Toplam_Katki_TL:Q", bin=alt.Bin(maxbins=40), title="Ay Sonu Toplam Katkı (TL)"),
@@ -108,7 +108,7 @@ st.altair_chart(hist + density + rule_med + rule_mean, use_container_width=True)
 
 st.markdown("---")
 
-# ---------- BES PROJEKSİYONU (tek senaryo, line chart) ----------
+# ---------- BES PROJEKSİYONU ----------
 st.subheader("💰 BES Projeksiyonu")
 
 colA, colB = st.columns([1,1])
@@ -120,7 +120,6 @@ with colB:
 monthly_typical = median_v  # tutucu varsayım: medyan
 balance_fv      = fv_of_monthly(monthly_typical, expected_return, years_in_system)
 
-# Yıllara göre birikim (çizgi grafik)
 balances = []
 r_m = (expected_return/100.0)/12.0
 bal = 0.0
@@ -140,7 +139,7 @@ line_bal = alt.Chart(bal_df).mark_line(point=True).encode(
 ).properties(height=260, title="Projeksiyon: Yıllara Göre BES Bakiyesi")
 st.altair_chart(line_bal, use_container_width=True)
 
-# Mini kartlar: etkiyi net göster
+
 total_principal = monthly_typical * 12 * years_in_system
 gain_component  = max(0.0, balance_fv - total_principal)
 
@@ -149,10 +148,8 @@ c1.metric("Tipik Aylık Katkı", tl(monthly_typical))
 c2.metric("Toplam Katkı (Ana Para)", tl(total_principal))
 c3.metric("Getiri Kazancı", tl(gain_component))
 
-# Kısa özet
+
 st.markdown(
     f"**Özet:** {years_in_system} yıl boyunca aylık ~{tl(monthly_typical)} katkı ve yıllık %{expected_return:.1f} getiri varsayımıyla "
     f"emeklilik başlangıcında yaklaşık **{tl(balance_fv)}** birikim oluşur."
 )
-
-st.markdown(f"<div style='color:#6b7280;font-size:12px'>Oluşturulma: {datetime.utcnow().date().isoformat()}</div>", unsafe_allow_html=True)
