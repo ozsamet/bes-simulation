@@ -7,7 +7,6 @@ from datetime import datetime
 
 st.set_page_config(page_title="Üstü BES'te Kalsın Simülasyonu", layout="wide")
 
-# ---------- yardımcılar ----------
 def next_multiple(x: int, base: int) -> int:
     k = x // base
     return (k + 1) * base
@@ -19,10 +18,9 @@ def contribution(amount: float, base: int) -> float:
 def tl(x: float) -> str:
     return f"{x:,.2f} TL".replace(",", "X").replace(".", ",").replace("X", ".")
 
-def pct(x: float) -> str:  # NEW
+def pct(x: float) -> str:
     return f"%{x:.1f}"
 
-# ---------- sabitler ----------
 CATEGORIES = [
     ("Market", 24), ("Kafe", 12), ("Restoran", 14), ("Ulaşım", 10),
     ("Eczane", 6), ("Giyim", 8), ("Elektronik", 5),
@@ -35,9 +33,8 @@ CATEGORY_SCALE = {
 PACKAGE_BASES = {"5'lik Yuvarla": 5, "10'luk Yuvarla": 10, "20'lik Yuvarla": 20}
 TRIALS = 3000
 SEED = 123
-DAYS = 30  # sabit
+DAYS = 30
 
-# ---------- simülasyon (cache) ----------
 @st.cache_data(show_spinner=False)
 def simulate_month_poisson(base: int, mean_tx_per_day: float,
                            days_in_month: int = DAYS,
@@ -46,7 +43,6 @@ def simulate_month_poisson(base: int, mean_tx_per_day: float,
     np.random.seed(seed); random.seed(seed + 1)
     cats, probs = zip(*CATEGORIES)
     probs = np.array(probs) / np.sum(probs)
-
     rows = []
     for _ in range(trials):
         total = 0.0
@@ -64,7 +60,6 @@ def simulate_month_poisson(base: int, mean_tx_per_day: float,
         rows.append(total)
     return pd.DataFrame({"Toplam_Katki_TL": rows})
 
-# ---------- finansal yardımcılar ----------
 def fv_of_monthly(monthly_amount: float, annual_return_pct: float, years: int) -> float:
     r_m = (annual_return_pct / 100.0) / 12.0
     n = years * 12
@@ -72,7 +67,6 @@ def fv_of_monthly(monthly_amount: float, annual_return_pct: float, years: int) -
         return monthly_amount * n
     return monthly_amount * (((1 + r_m) ** n - 1) / r_m)
 
-# ---------- UI ----------
 st.title("📈 Ay Sonu Dağılımı — Üstü BES’te Kalsın")
 
 col1, col2 = st.columns([1,1])
@@ -83,7 +77,6 @@ with col2:
 
 st.markdown("---")
 
-# Simülasyon ve dağılım özetleri
 base_val = PACKAGE_BASES[package_label]
 df = simulate_month_poisson(base=base_val, mean_tx_per_day=float(mean_tx))
 
@@ -110,28 +103,25 @@ st.altair_chart(hist + density + rule_med + rule_mean, use_container_width=True)
 
 st.markdown("---")
 
-# ---------- BES PROJEKSİYONU ----------
 st.subheader("💰 BES Projeksiyonu")
 
-# NEW: Fix katkı input'u
-colA, colB, colC = st.columns([1,1,1])  # genişletildi
+colA, colB, colC = st.columns([1,1,1])
 with colA:
     years_in_system = st.slider("Sistemde Kalınacak Süre (Yıl)", 5, 40, 20, 1)
 with colB:
     expected_return = st.slider("Reel Beklenen Yıllık Getiri (%)", 0.0, 10.0, 4.0, 1.0)
-with colC:  # NEW
-    fixed_monthly = st.number_input("Aylık Fix Katkı Payın (TL)", min_value=0.0, value=1750.0, step=50.0)
+with colC:
+    fixed_monthly: int = st.number_input("Aylık Fix Katkı Payın (TL)", min_value=0, value=1750, step=50, format="%d")
 
-monthly_typical = median_v  # tutucu varsayım: medyan (yuvarlamadan gelen tipik aylık)
-balance_fv_roundup  = fv_of_monthly(monthly_typical, expected_return, years_in_system)   # NEW
-balance_fv_fixed    = fv_of_monthly(fixed_monthly, expected_return, years_in_system)     # NEW
-balance_fv_both     = fv_of_monthly(fixed_monthly + monthly_typical, expected_return, years_in_system)  # NEW
+monthly_typical = median_v
+balance_fv_roundup  = fv_of_monthly(monthly_typical, expected_return, years_in_system)
+balance_fv_fixed    = fv_of_monthly(fixed_monthly, expected_return, years_in_system)
+balance_fv_both     = fv_of_monthly(fixed_monthly + monthly_typical, expected_return, years_in_system)
 
-# Yıllık bazda çizim (round-up + fix toplamı üzerinden)
 balances = []
 r_m = (expected_return/100.0)/12.0
 bal = 0.0
-monthly_total = fixed_monthly + monthly_typical  # NEW
+monthly_total = fixed_monthly + monthly_typical
 for y in range(1, years_in_system+1):
     annual_c = monthly_total * 12
     if abs(r_m) < 1e-12:
@@ -148,7 +138,6 @@ line_bal = alt.Chart(bal_df).mark_line(point=True).encode(
 ).properties(height=260, title="Projeksiyon: Yıllara Göre BES Bakiyesi (Fix + Yuvarlama)")
 st.altair_chart(line_bal, use_container_width=True)
 
-# Eski metrikler round-up özelinde
 total_principal_round = monthly_typical * 12 * years_in_system
 gain_component_round  = max(0.0, balance_fv_roundup - total_principal_round)
 
@@ -157,7 +146,6 @@ c1.metric("Tipik Aylık Yuvarlama Katkısı", tl(monthly_typical))
 c2.metric("Yuvarlamadan Toplam Ana Para", tl(total_principal_round))
 c3.metric("Yuvarlamadan Getiri Kazancı", tl(gain_component_round))
 
-# NEW: Fix vs Yuvarlama karşılaştırmalı metrikler
 uplift_monthly_pct = None
 if fixed_monthly > 0:
     uplift_monthly_pct = (monthly_typical / fixed_monthly) * 100.0
@@ -166,13 +154,12 @@ if balance_fv_fixed > 1e-9:
     uplift_balance_pct = ((balance_fv_both - balance_fv_fixed) / balance_fv_fixed) * 100.0
 
 d1, d2, d3 = st.columns(3)
-d1.metric("Fix Aylık Katkı", tl(fixed_monthly))
+d1.metric("Fix Aylık Katkı", tl(float(fixed_monthly)))
 d2.metric("Aylık Ekstra (Yuvarlama / Fix)", "—" if uplift_monthly_pct is None else pct(uplift_monthly_pct))
 d3.metric("Projeksiyon Uplift (Bakiye)", "—" if uplift_balance_pct is None else pct(uplift_balance_pct))
 
-# NEW: Özet metni güncellendi
 st.markdown(
-    f"**Özet:** {years_in_system} yıl boyunca aylık fix katkı **{tl(fixed_monthly)}** ve seçilen paketten gelen tipik yuvarlama **{tl(monthly_typical)}** ile, "
+    f"**Özet:** {years_in_system} yıl boyunca aylık fix katkı **{tl(float(fixed_monthly))}** ve seçilen paketten gelen tipik yuvarlama **{tl(monthly_typical)}** ile, "
     f"yıllık %{expected_return:.1f} reel getiri varsayımında emeklilik başlangıcında yaklaşık **{tl(balance_fv_both)}** birikim oluşur. "
     f"Sadece fix katkı olsaydı **{tl(balance_fv_fixed)}** olurdu; yuvarlama, bakiyeyi yaklaşık "
     f"{'—' if uplift_balance_pct is None else pct(uplift_balance_pct)} oranında artırır."
