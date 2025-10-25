@@ -19,7 +19,7 @@ def contribution(amount: float, base: int) -> float:
 def tl(x: float) -> str:
     return f"{x:,.2f} TL".replace(",", "X").replace(".", ",").replace("X", ".")
 
-def pct(x: float) -> str:
+def pct(x: float) -> str:  # NEW
     return f"%{x:.1f}"
 
 # ---------- sabitler ----------
@@ -36,7 +36,6 @@ PACKAGE_BASES = {"5'lik Yuvarla": 5, "10'luk Yuvarla": 10, "20'lik Yuvarla": 20}
 TRIALS = 3000
 SEED = 123
 DAYS = 30  # sabit
-FEE_PCT_ANNUAL = 2.5  # FEE: Yıllık fon işletim gideri
 
 # ---------- simülasyon (cache) ----------
 @st.cache_data(show_spinner=False)
@@ -67,8 +66,6 @@ def simulate_month_poisson(base: int, mean_tx_per_day: float,
 
 # ---------- finansal yardımcılar ----------
 def fv_of_monthly(monthly_amount: float, annual_return_pct: float, years: int) -> float:
-    """Aylık düzenli katkının gelecekteki değeri (FV).
-    annual_return_pct: YILLIK net getiri yüzdesi (FİG düşülmüş olmalı)."""
     r_m = (annual_return_pct / 100.0) / 12.0
     n = years * 12
     if abs(r_m) < 1e-12:
@@ -116,31 +113,25 @@ st.markdown("---")
 # ---------- BES PROJEKSİYONU ----------
 st.subheader("💰 BES Projeksiyonu")
 
-colA, colB, colC = st.columns([1,1,1])
+# NEW: Fix katkı input'u
+colA, colB, colC = st.columns([1,1,1])  # genişletildi
 with colA:
     years_in_system = st.slider("Sistemde Kalınacak Süre (Yıl)", 5, 40, 20, 1)
 with colB:
-    expected_return = st.slider("Reel Beklenen Yıllık Getiri (Brüt, %)", 0.0, 10.0, 4.0, 0.5)
-with colC:
+    expected_return = st.slider("Reel Beklenen Yıllık Getiri (%)", 0.0, 10.0, 4.0, 1.0)
+with colC:  # NEW
     fixed_monthly = st.number_input("Aylık Fix Katkı Payın (TL)", min_value=0.0, value=1750.0, step=50.0)
 
-# NEW: Net getiri = brüt beklenen getiri - yıllık FİG
-net_return = expected_return - FEE_PCT_ANNUAL  # FEE
-# Not: Net getiri negatif olabilir; formül bunu destekler.
+monthly_typical = median_v  # tutucu varsayım: medyan (yuvarlamadan gelen tipik aylık)
+balance_fv_roundup  = fv_of_monthly(monthly_typical, expected_return, years_in_system)   # NEW
+balance_fv_fixed    = fv_of_monthly(fixed_monthly, expected_return, years_in_system)     # NEW
+balance_fv_both     = fv_of_monthly(fixed_monthly + monthly_typical, expected_return, years_in_system)  # NEW
 
-# Yuvarlamadan gelen tipik aylık katkı
-monthly_typical = median_v
-
-# FV hesapları (NET getiri ile)
-balance_fv_roundup  = fv_of_monthly(monthly_typical, net_return, years_in_system)
-balance_fv_fixed    = fv_of_monthly(fixed_monthly, net_return, years_in_system)
-balance_fv_both     = fv_of_monthly(fixed_monthly + monthly_typical, net_return, years_in_system)
-
-# Yıllık bazda çizim (Fix + Yuvarlama, NET r ile)
+# Yıllık bazda çizim (round-up + fix toplamı üzerinden)
 balances = []
-r_m = (net_return/100.0)/12.0  # NET aylık oran
+r_m = (expected_return/100.0)/12.0
 bal = 0.0
-monthly_total = fixed_monthly + monthly_typical
+monthly_total = fixed_monthly + monthly_typical  # NEW
 for y in range(1, years_in_system+1):
     annual_c = monthly_total * 12
     if abs(r_m) < 1e-12:
@@ -154,33 +145,35 @@ line_bal = alt.Chart(bal_df).mark_line(point=True).encode(
     x=alt.X("Yıl:O", title="Yıl"),
     y=alt.Y("Bakiye:Q", title="Bakiye (TL)"),
     tooltip=[alt.Tooltip("Yıl:O"), alt.Tooltip("Bakiye:Q", format=".2f")]
-).properties(height=260, title="Projeksiyon: Yıllara Göre BES Bakiyesi (Fix + Yuvarlama, NET)")
+).properties(height=260, title="Projeksiyon: Yıllara Göre BES Bakiyesi (Fix + Yuvarlama)")
 st.altair_chart(line_bal, use_container_width=True)
 
-# Yuvarlama özel metrikler (NET)
+# Eski metrikler round-up özelinde
 total_principal_round = monthly_typical * 12 * years_in_system
 gain_component_round  = max(0.0, balance_fv_roundup - total_principal_round)
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3 = st.columns(3)
 c1.metric("Tipik Aylık Yuvarlama Katkısı", tl(monthly_typical))
 c2.metric("Yuvarlamadan Toplam Ana Para", tl(total_principal_round))
-c3.metric("Yuvarlamadan Getiri (NET)", tl(gain_component_round))
-c4.metric("Net Beklenen Getiri", pct(net_return))  # NEW: Net getiri görünür
+c3.metric("Yuvarlamadan Getiri Kazancı", tl(gain_component_round))
 
-# Fix vs Yuvarlama karşılaştırmalı metrikler (NET)
-uplift_monthly_pct = (monthly_typical / fixed_monthly) * 100.0 if fixed_monthly > 0 else None
-uplift_balance_pct = ((balance_fv_both - balance_fv_fixed) / balance_fv_fixed) * 100.0 if balance_fv_fixed > 1e-9 else None
+# NEW: Fix vs Yuvarlama karşılaştırmalı metrikler
+uplift_monthly_pct = None
+if fixed_monthly > 0:
+    uplift_monthly_pct = (monthly_typical / fixed_monthly) * 100.0
+uplift_balance_pct = None
+if balance_fv_fixed > 1e-9:
+    uplift_balance_pct = ((balance_fv_both - balance_fv_fixed) / balance_fv_fixed) * 100.0
 
 d1, d2, d3 = st.columns(3)
 d1.metric("Fix Aylık Katkı", tl(fixed_monthly))
 d2.metric("Aylık Ekstra (Yuvarlama / Fix)", "—" if uplift_monthly_pct is None else pct(uplift_monthly_pct))
-d3.metric("Projeksiyon Uplift (Bakiye, NET)", "—" if uplift_balance_pct is None else pct(uplift_balance_pct))
+d3.metric("Projeksiyon Uplift (Bakiye)", "—" if uplift_balance_pct is None else pct(uplift_balance_pct))
 
-# Özet (NET)
+# NEW: Özet metni güncellendi
 st.markdown(
     f"**Özet:** {years_in_system} yıl boyunca aylık fix katkı **{tl(fixed_monthly)}** ve seçilen paketten gelen tipik yuvarlama **{tl(monthly_typical)}** ile, "
-    f"**yıllık brüt %{expected_return:.1f}** getiri ve **yıllık FİG %{FEE_PCT_ANNUAL:.1f}** sonrası **net %{net_return:.1f}** varsayımıyla "
-    f"emeklilik başlangıcında yaklaşık **{tl(balance_fv_both)}** birikim oluşur. "
-    f"Sadece fix katkı olsaydı **{tl(balance_fv_fixed)}** olurdu; yuvarlama eklemesi bakiyeyi NET bazda "
-    f"{'—' if uplift_balance_pct is None else pct(uplift_balance_pct)} artırır."
+    f"yıllık %{expected_return:.1f} reel getiri varsayımında emeklilik başlangıcında yaklaşık **{tl(balance_fv_both)}** birikim oluşur. "
+    f"Sadece fix katkı olsaydı **{tl(balance_fv_fixed)}** olurdu; yuvarlama, bakiyeyi yaklaşık "
+    f"{'—' if uplift_balance_pct is None else pct(uplift_balance_pct)} oranında artırır."
 )
