@@ -19,6 +19,9 @@ def contribution(amount: float, base: int) -> float:
 def tl(x: float) -> str:
     return f"{x:,.2f} TL".replace(",", "X").replace(".", ",").replace("X", ".")
 
+def pct(x: float) -> str:  # NEW
+    return f"%{x:.1f}"
+
 # ---------- sabitler ----------
 CATEGORIES = [
     ("Market", 24), ("Kafe", 12), ("Restoran", 14), ("Ulaşım", 10),
@@ -110,20 +113,27 @@ st.markdown("---")
 # ---------- BES PROJEKSİYONU ----------
 st.subheader("💰 BES Projeksiyonu")
 
-colA, colB = st.columns([1,1])
+# NEW: Fix katkı input'u
+colA, colB, colC = st.columns([1,1,1])  # genişletildi
 with colA:
     years_in_system = st.slider("Sistemde Kalınacak Süre (Yıl)", 5, 40, 20, 1)
 with colB:
     expected_return = st.slider("Reel Beklenen Yıllık Getiri (%)", 0.0, 10.0, 4.0, 1.0)
+with colC:  # NEW
+    fixed_monthly = st.number_input("Aylık Fix Katkı Payın (TL)", min_value=0.0, value=1750.0, step=50.0)
 
-monthly_typical = median_v  # tutucu varsayım: medyan
-balance_fv      = fv_of_monthly(monthly_typical, expected_return, years_in_system)
+monthly_typical = median_v  # tutucu varsayım: medyan (yuvarlamadan gelen tipik aylık)
+balance_fv_roundup  = fv_of_monthly(monthly_typical, expected_return, years_in_system)   # NEW
+balance_fv_fixed    = fv_of_monthly(fixed_monthly, expected_return, years_in_system)     # NEW
+balance_fv_both     = fv_of_monthly(fixed_monthly + monthly_typical, expected_return, years_in_system)  # NEW
 
+# Yıllık bazda çizim (round-up + fix toplamı üzerinden)
 balances = []
 r_m = (expected_return/100.0)/12.0
 bal = 0.0
+monthly_total = fixed_monthly + monthly_typical  # NEW
 for y in range(1, years_in_system+1):
-    annual_c = monthly_typical * 12
+    annual_c = monthly_total * 12
     if abs(r_m) < 1e-12:
         bal = bal + annual_c
     else:
@@ -135,18 +145,35 @@ line_bal = alt.Chart(bal_df).mark_line(point=True).encode(
     x=alt.X("Yıl:O", title="Yıl"),
     y=alt.Y("Bakiye:Q", title="Bakiye (TL)"),
     tooltip=[alt.Tooltip("Yıl:O"), alt.Tooltip("Bakiye:Q", format=".2f")]
-).properties(height=260, title="Projeksiyon: Yıllara Göre BES Bakiyesi")
+).properties(height=260, title="Projeksiyon: Yıllara Göre BES Bakiyesi (Fix + Yuvarlama)")
 st.altair_chart(line_bal, use_container_width=True)
 
-total_principal = monthly_typical * 12 * years_in_system
-gain_component  = max(0.0, balance_fv - total_principal)
+# Eski metrikler round-up özelinde
+total_principal_round = monthly_typical * 12 * years_in_system
+gain_component_round  = max(0.0, balance_fv_roundup - total_principal_round)
 
 c1, c2, c3 = st.columns(3)
-c1.metric("Tipik Aylık Katkı", tl(monthly_typical))
-c2.metric("Toplam Katkı (Ana Para)", tl(total_principal))
-c3.metric("Getiri Kazancı", tl(gain_component))
+c1.metric("Tipik Aylık Yuvarlama Katkısı", tl(monthly_typical))
+c2.metric("Yuvarlamadan Toplam Ana Para", tl(total_principal_round))
+c3.metric("Yuvarlamadan Getiri Kazancı", tl(gain_component_round))
 
+# NEW: Fix vs Yuvarlama karşılaştırmalı metrikler
+uplift_monthly_pct = None
+if fixed_monthly > 0:
+    uplift_monthly_pct = (monthly_typical / fixed_monthly) * 100.0
+uplift_balance_pct = None
+if balance_fv_fixed > 1e-9:
+    uplift_balance_pct = ((balance_fv_both - balance_fv_fixed) / balance_fv_fixed) * 100.0
+
+d1, d2, d3 = st.columns(3)
+d1.metric("Fix Aylık Katkı", tl(fixed_monthly))
+d2.metric("Aylık Ekstra (Yuvarlama / Fix)", "—" if uplift_monthly_pct is None else pct(uplift_monthly_pct))
+d3.metric("Projeksiyon Uplift (Bakiye)", "—" if uplift_balance_pct is None else pct(uplift_balance_pct))
+
+# NEW: Özet metni güncellendi
 st.markdown(
-    f"**Özet:** {years_in_system} yıl boyunca aylık ~{tl(monthly_typical)} katkı ve yıllık %{expected_return:.1f} getiri varsayımıyla "
-    f"emeklilik başlangıcında yaklaşık **{tl(balance_fv)}** birikim oluşur."
+    f"**Özet:** {years_in_system} yıl boyunca aylık fix katkı **{tl(fixed_monthly)}** ve seçilen paketten gelen tipik yuvarlama **{tl(monthly_typical)}** ile, "
+    f"yıllık %{expected_return:.1f} reel getiri varsayımında emeklilik başlangıcında yaklaşık **{tl(balance_fv_both)}** birikim oluşur. "
+    f"Sadece fix katkı olsaydı **{tl(balance_fv_fixed)}** olurdu; yuvarlama, bakiyeyi yaklaşık "
+    f"{'—' if uplift_balance_pct is None else pct(uplift_balance_pct)} oranında artırır."
 )
