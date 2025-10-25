@@ -35,30 +35,48 @@ TRIALS = 2000
 SEED = 123
 DAYS = 31
 
-@st.cache_data(show_spinner=False)
-def simulate_month_poisson(base: int, mean_tx_per_day: float,
+# ------------------ HIZLI & VEKTÖRİZE SİMÜLASYON ------------------
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=32)
+def simulate_month_poisson(base: int,
+                           mean_tx_per_day: float,
                            days_in_month: int = DAYS,
                            trials: int = TRIALS,
                            seed: int = SEED) -> pd.DataFrame:
-    np.random.seed(seed); random.seed(seed + 1)
+    rng = np.random.default_rng(seed)
     cats, probs = zip(*CATEGORIES)
-    probs = np.array(probs) / np.sum(probs)
-    rows = []
-    for _ in range(trials):
-        total = 0.0
-        for _ in range(days_in_month):
-            n_tx = np.random.poisson(lam=mean_tx_per_day)
-            if n_tx <= 0:
-                continue
-            idxs = np.random.choice(len(cats), size=n_tx, p=probs)
-            for idx in idxs:
-                cat = cats[idx]
-                amount = float(np.random.lognormal(mean=3.6, sigma=0.5))
-                amount *= CATEGORY_SCALE.get(cat, 1.0) * 1.15
-                amount = round(max(5.0, amount), 2)
-                total += contribution(amount, base)
-        rows.append(total)
-    return pd.DataFrame({"Toplam_Katki_TL": rows})
+    probs = np.array(probs, dtype=np.float64)
+    probs /= probs.sum()
+
+    # 1) Her deneme için aylık toplam işlem sayısı ~ Poisson(λ * DAYS)
+    lam_month = float(mean_tx_per_day) * float(days_in_month)
+    n_per_trial = rng.poisson(lam=lam_month, size=trials).astype(np.int64)
+
+    total_tx = int(n_per_trial.sum())
+    if total_tx == 0:
+        return pd.DataFrame({"Toplam_Katki_TL": np.zeros(trials, dtype=np.float64)})
+
+    # 2) Tüm işlemler için kategori ve tutarları topluca üret
+    #    a) Kategoriler
+    cat_idx = rng.choice(len(cats), size=total_tx, p=probs, shuffle=True)
+    scale_vec = np.array([CATEGORY_SCALE[c] for c in cats], dtype=np.float64)
+
+    #    b) İşlem tutarı: lognormal * kategori ölçeği * 1.15, alt sınır 5 TL
+    amounts = rng.lognormal(mean=3.6, sigma=0.5, size=total_tx)
+    amounts = np.maximum(5.0, amounts * scale_vec[cat_idx] * 1.15)
+
+    # 3) Yuvarlama katkısı (tamamen vektörize)
+    #    katkı = (base - (round(amount) % base)) % base
+    amt_int = np.rint(amounts).astype(np.int64)
+    contrib = (base - (amt_int % base)) % base
+    contrib = contrib.astype(np.float64)
+
+    # 4) İşlemleri denemelere dağıt ve topla (np.add.at ile scatter-add)
+    #    trial_ids: [0,0,...,0, 1,1,..., 2,2,...] gibi
+    trial_ids = np.repeat(np.arange(trials, dtype=np.int64), n_per_trial)
+    totals = np.zeros(trials, dtype=np.float64)
+    np.add.at(totals, trial_ids, contrib)
+
+    return pd.DataFrame({"Toplam_Katki_TL": totals})
 
 def fv_of_monthly(monthly_amount: float, annual_return_pct: float, years: int) -> float:
     r_m = (annual_return_pct / 100.0) / 12.0
