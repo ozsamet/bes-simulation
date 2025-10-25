@@ -115,7 +115,7 @@ colA, colB = st.columns([1,1])
 with colA:
     years_in_system = st.slider("Sistemde Kalınacak Süre (Yıl)", 5, 40, 20, 1)
 with colB:
-    expected_return = st.slider("Brüt Beklenen Yıllık Getiri (%)", 0.0, 70.0, 8.0, 0.5)
+    expected_return = st.slider("Brüt Beklenen Yıllık Getiri (%)", 0.0, 70.0, 20.0, 1.0)
 
 monthly_typical = median_v  # tutucu varsayım: medyan
 balance_fv      = fv_of_monthly(monthly_typical, expected_return, years_in_system)
