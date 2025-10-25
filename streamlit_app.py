@@ -5,41 +5,7 @@ import random
 import altair as alt
 from datetime import datetime
 
-# sayfa ayarı
-st.set_page_config(page_title="Üstü BES'te Kalsın — Ay Sonu Dağılımı", layout="wide")
-
-# ---------- küçük CSS (sunum için temiz görünüm) ----------
-st.markdown(
-    """
-    <style>
-    /* sayfa arka planı ve kart benzeri hissiyat */
-    .stApp {
-        background: linear-gradient(180deg, #f7fbff 0%, #ffffff 100%);
-    }
-    .big-title {
-        font-size:42px;
-        font-weight:800;
-        color:#0b3d91;
-        margin-bottom:6px;
-    }
-    .subtitle {
-        font-size:14px;
-        color:#334155;
-        margin-top:-8px;
-    }
-    /* gizle Streamlit menü ve footer (daha temiz sunum) */
-    #MainMenu, footer, header {visibility: hidden;}
-    /* KPI kutuları */
-    .kpi {
-        background: linear-gradient(180deg,#ffffff,#f3f7ff);
-        border-radius:12px;
-        padding:12px;
-        box-shadow: 0 6px 18px rgba(11,61,145,0.08);
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+st.set_page_config(page_title="Üstü BES'te Kalsın — Ay Sonu Dağılımı & BES Projeksiyon", layout="wide")
 
 # ---------- yardımcılar ----------
 def next_multiple(x: int, base: int) -> int:
@@ -53,7 +19,7 @@ def contribution(amount: float, base: int) -> float:
 def tl(x):
     return f"{x:,.2f} TL".replace(",", "X").replace(".", ",").replace("X", ".")
 
-# ---------- sabitler (kullandığınız halden aynen) ----------
+# ---------- sabitler (orijinal) ----------
 CATEGORIES = [
     ("Market", 24), ("Kafe", 12), ("Restoran", 14), ("Ulaşım", 10),
     ("Eczane", 6), ("Giyim", 8), ("Elektronik", 5),
@@ -70,8 +36,9 @@ CATEGORY_SCALE = {
     "Giyim":1.8, "Elektronik":2.4, "Online Alışveriş":1.6, "Fatura/Servis":2.2
 }
 PACKAGE_BASES = {"Mini (5)": 5, "Midi (10)": 10, "Maxi (20)": 20}
+ALL_PACKAGES = list(PACKAGE_BASES.keys())
 
-# ---------- simülasyon (mevcut fonksiyonunuzdan küçük değişiklik) ----------
+# ---------- simülasyon fonksiyonu ----------
 def simulate_month_total_one(mean_tx_per_day: float,
                              days_in_month: int = 30,
                              trials: int = 5000,
@@ -102,13 +69,12 @@ def simulate_month_total_one(mean_tx_per_day: float,
         rows.append({"trial": t+1, "Toplam_Katki_TL": round(total, 2), "Toplam_Islem": tx_count})
     return pd.DataFrame(rows)
 
-# ---------- SAYFA: başlık ve seçimler ----------
-st.markdown('<div class="big-title">📈 Ay Sonu Dağılımı — Sunum Versiyonu</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Hangi paketi seçerse kullanıcı, ay sonunda ortalama ne kadar "yuvarlama katkısı" biriktirir? Hızlı, çarpıcı özetler ve dağılım gösterimi.</div>', unsafe_allow_html=True)
-st.markdown("---")
+# ---------- SAYFA: başlık ve kontroller ----------
+st.title("📈 Ay Sonu Dağılımı — Sunum & Basit BES Projeksiyon")
+st.caption("Hızlı, çarpıcı özetler. CSV indirme kaldırıldı; görünüm light-friendly (dark mod ile karıştırılmadı).")
 
-# kontrol paneli (üslup: minimal)
-col1, col2, col3, col4 = st.columns([1.4,1,1,1])
+# kontrol paneli
+col1, col2, col3, col4 = st.columns([1.2,1,1,1])
 with col1:
     PROFILE = st.selectbox("Profil", list(INCOME_PROFILES.keys()), index=1)
 with col2:
@@ -120,13 +86,13 @@ with col4:
 
 c1, c2 = st.columns([1.3, 1])
 with c1:
-    package_label = st.selectbox("Paket (grafik için)", ["Mini (5)", "Midi (10)", "Maxi (20)"], index=1)
+    package_label = st.selectbox("Paket (grafik için)", ALL_PACKAGES, index=1)
 with c2:
     mean_tx = st.select_slider("Günlük işlem adedi", options=[1,2,3,4,5], value=2)
 
-st.markdown("")  # küçük boşluk
+st.markdown("---")
 
-# simülasyonu çalıştır
+# simülasyon
 df_month_one = simulate_month_total_one(
     mean_tx_per_day=float(mean_tx),
     days_in_month=DAYS,
@@ -136,82 +102,67 @@ df_month_one = simulate_month_total_one(
     package_label=package_label
 )
 
-# ---------- ÇARPICI İSTATİSTİKLER (KPI'lar) ----------
+# ---------- KPI'lar ----------
 median_v = float(df_month_one["Toplam_Katki_TL"].median())
 mean_v = float(df_month_one["Toplam_Katki_TL"].mean())
 p5 = float(df_month_one["Toplam_Katki_TL"].quantile(0.05))
 p95 = float(df_month_one["Toplam_Katki_TL"].quantile(0.95))
 max_v = float(df_month_one["Toplam_Katki_TL"].max())
 
-# olasılık eşiği kontrolü — kullanıcıyı etkileyecek bir gösterge:
-thresholds = [10, 25, 50, 100]  # TL
-probs = {t: (df_month_one["Toplam_Katki_TL"] >= t).mean() for t in thresholds}
+# eşik olasılıkları (izleyici etkisi için)
+thr_list = [10, 25, 50, 100]
+probs = {t: (df_month_one["Toplam_Katki_TL"] >= t).mean() for t in thr_list}
 
 k1, k2, k3, k4 = st.columns([1,1,1,1])
-with k1:
-    st.markdown('<div class="kpi">', unsafe_allow_html=True)
-    st.metric(label="Medyan (ay sonu)", value=tl(median_v), delta=f"P5–P95: {tl(p5)} — {tl(p95)}")
-    st.markdown('</div>', unsafe_allow_html=True)
-with k2:
-    st.markdown('<div class="kpi">', unsafe_allow_html=True)
-    st.metric(label="Ortalama (ay sonu)", value=tl(mean_v), delta=f"Maks: {tl(max_v)}")
-    st.markdown('</div>', unsafe_allow_html=True)
-with k3:
-    st.markdown('<div class="kpi">', unsafe_allow_html=True)
-    st.metric(label=f">%≥{thresholds[2]} TL olasılığı", value=f"{probs[thresholds[2]]:.1%}")
-    st.markdown('</div>', unsafe_allow_html=True)
-with k4:
-    st.markdown('<div class="kpi">', unsafe_allow_html=True)
-    # hızlı çekici cümle
-    if probs[thresholds[2]] >= 0.5:
-        punch = "Yüksek ihtimal!"
-    elif probs[thresholds[2]] >= 0.2:
-        punch = "Kayda değer ihtimal"
-    else:
-        punch = "Düşük ihtimal"
-    st.metric(label=f"50 TL üzeri için özet", value=punch, delta=f"%≥{thresholds[2]} = {probs[thresholds[2]]:.1%}")
-    st.markdown('</div>', unsafe_allow_html=True)
+k1.metric("Medyan (ay sonu)", tl(median_v), delta=f"P5–P95: {tl(p5)} — {tl(p95)}")
+k2.metric("Ortalama (ay sonu)", tl(mean_v), delta=f"Maks: {tl(max_v)}")
+k3.metric(f"%≥{thr_list[2]} TL olasılığı", f"{probs[thr_list[2]]:.1%}")
+if probs[thr_list[2]] >= 0.5:
+    punch = "Yüksek ihtimal!"
+elif probs[thr_list[2]] >= 0.2:
+    punch = "Kayda değer ihtimal"
+else:
+    punch = "Düşük ihtimal"
+k4.metric("50 TL üzeri özet", punch, delta=f"%≥50 = {probs[thr_list[2]]:.1%}")
 
 st.markdown("---")
 
-# ---------- GÖRSEL: histogram + yoğunluk ----------
+# ---------- GRAFİK: histogram + yoğunluk + çizgiler ----------
 base = alt.Chart(df_month_one)
 
-hist = base.mark_bar(opacity=0.55, cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+hist = base.mark_bar(opacity=0.6).encode(
     x=alt.X("Toplam_Katki_TL:Q", bin=alt.Bin(maxbins=50), title="Ay Sonu Toplam Katkı (TL)"),
     y=alt.Y("count():Q", title="Adet"),
     tooltip=[alt.Tooltip("count():Q", title="Deneme sayısı")]
-).properties(height=320)
+).properties(height=300)
 
 density = base.transform_density(
     "Toplam_Katki_TL",
     as_=["Toplam_Katki_TL","Yoğunluk"]
-).mark_line(strokeWidth=3).encode(
+).mark_line(strokeWidth=2).encode(
     x="Toplam_Katki_TL:Q",
-    y="Yoğunluk:Q",
-    tooltip=[alt.Tooltip("Toplam_Katki_TL:Q", title="Katkı"), alt.Tooltip("Yoğunluk:Q", title="Yoğunluk")]
+    y="Yoğunluk:Q"
 )
 
-# median & mean çizgileri
-rule_median = alt.Chart(pd.DataFrame({"x":[median_v]})).mark_rule(color="#0b3d91", strokeWidth=2).encode(x="x:Q")
-rule_mean = alt.Chart(pd.DataFrame({"x":[mean_v]})).mark_rule(color="#e11d48", strokeWidth=2, strokeDash=[4,4]).encode(x="x:Q")
+rule_median = alt.Chart(pd.DataFrame({"x":[median_v]})).mark_rule(color="#1f77b4", strokeWidth=2).encode(x="x:Q")
+rule_mean = alt.Chart(pd.DataFrame({"x":[mean_v]})).mark_rule(color="#ff7f0e", strokeWidth=2, strokeDash=[6,4]).encode(x="x:Q")
 
-# Etiketler için text layer
 txt_median = alt.Chart(pd.DataFrame({"x":[median_v], "label":[f"Medyan: {tl(median_v)}"]})).mark_text(
-    align="left", dx=5, dy=-10, fontWeight="bold", color="#0b3d91"
+    align="left", dx=5, dy=-10, fontWeight="bold", color="#1f77b4"
 ).encode(x="x:Q", text="label:N")
 
 txt_mean = alt.Chart(pd.DataFrame({"x":[mean_v], "label":[f"Ortalama: {tl(mean_v)}"]})).mark_text(
-    align="left", dx=5, dy=10, fontWeight="bold", color="#e11d48"
+    align="left", dx=5, dy=10, fontWeight="bold", color="#ff7f0e"
 ).encode(x="x:Q", text="label:N")
 
 chart = (hist + density + rule_median + rule_mean + txt_median + txt_mean).properties(title=f"{package_label} • Dağılım (n={TRIALS})")
 st.altair_chart(chart, use_container_width=True)
 
+st.markdown("---")
 
-st.markdown("**Hızlı Özet — Yüzdelikler ve Olasılıklar**")
+# ---------- HIZLI İSTATİSTİKLER TABLOSU ----------
 pct_df = pd.DataFrame({
-    "Ölçüt": ["P0 (min)", "P5", "P10", "Medyan", "P75", "P90", "P95", "Maks"],
+    "Ölçüt": ["Min", "P5", "P10", "Medyan", "P75", "P90", "P95", "Maks"],
     "Değer (TL)": [
         df_month_one["Toplam_Katki_TL"].min(),
         df_month_one["Toplam_Katki_TL"].quantile(0.05),
@@ -226,26 +177,81 @@ pct_df = pd.DataFrame({
 pct_df["Değer (TL)"] = pct_df["Değer (TL)"].apply(lambda x: tl(float(x)))
 st.table(pct_df)
 
-# olasılık tablosu (eşikler)
-st.markdown("**Eşik Bazlı Olasılıklar**")
-thr = st.slider("İlgilenilen Eşik (TL) — olasılığı göster", min_value=0, max_value=int(max(200, max_v)), value=50, step=5)
-prob_thr = (df_month_one["Toplam_Katki_TL"] >= thr).mean()
-st.metric(label=f"% trials >= {thr} TL", value=f"{prob_thr:.1%}")
-
 st.markdown("---")
 
-st.markdown(
-    """
-    **Sunum notları (kısa):**
-    - Medyan: izleyiciye beklenen tipik aylık katkıyı söyler.
-    - Ortalama: birkaç büyük katkının etkisini gösterir (outlier'lar etkiler).
-    - P5–P95 aralığı: risk bandı; izleyiciye "çoğunlukla bu aralıkta kalır" mesajı verir.
-    - Eşik olasılıkları (ör. %≥50 TL) izleyiciyi doğrudan etkiler — bunu büyük puntolarla vurgulayın.
-    """
-)
+# ---------- BASİT BES PROJEKSİYONU ----------
+st.subheader("🔒 Basit BES Projeksiyonu — Bu aylık yuvarlamalar ile ne kadar olur?")
+
+# varsayımlar / kullanıcı girişi
+colA, colB, colC, colD = st.columns([1,1,1,1])
+with colA:
+    years_to_retire = st.number_input("Kalan süre (yıl)", min_value=1, value=30, step=1)
+with colB:
+    annual_return = st.slider("Beklenen yıllık brüt getiri (%)", min_value=0.0, max_value=20.0, value=12.0) / 100.0
+with colC:
+    annual_fee = st.slider("Yıllık masraf (%)", min_value=0.0, max_value=5.0, value=1.0) / 100.0
+with colD:
+    payout_years = st.number_input("Emeklilik ödeme süresi (yıl, annuity)", min_value=5, value=20, step=1)
+
+st.markdown("**Açıklama (basit):** Simülasyondan elde edilen *aylık ortalama yuvarlama* (medyan) her ay BES'e yatırılıyor. Getiri ve masraflar sabit kabul ediliyor; vergi/komisyonlar dahil edilmedi.")
+
+# monthly contribution assumption: use medyan from simulation as typical monthly contributed amount
+monthly_contrib = max(0.0, median_v)  # median_v is monthly total rounding
+st.markdown(f"**Varsayılan Aylık Katkı (simülasyon medyanı):** {tl(monthly_contrib)}")
+
+# hesaplama
+months = int(years_to_retire * 12)
+# basit net yıllık getiri = brüt - masraf (yaklaşık); aylık net oran:
+net_annual = annual_return - annual_fee
+monthly_rate = net_annual / 12.0
+if abs(monthly_rate) < 1e-12:
+    fv = monthly_contrib * months
+else:
+    fv = monthly_contrib * (( (1 + monthly_rate) ** months - 1) / monthly_rate)
+
+fv = float(fv)
+
+# emeklilikte aylık gelir (basit sabit annuity assumption)
+months_payout = int(payout_years * 12)
+# varsayılan payout rate (emeklilik dönemi getiri, konservatif)
+payout_annual_return = 0.04
+payout_monthly = payout_annual_return / 12.0
+if months_payout > 0 and payout_monthly > 0:
+    annuity_monthly = fv * (payout_monthly) / (1 - (1 + payout_monthly) ** (-months_payout))
+else:
+    annuity_monthly = fv / max(1, months_payout)
+
+# gösterimler
+col1, col2 = st.columns([1,1])
+col1.metric("Proj. BES Bakiye (emeklilikte, nominal)", tl(fv))
+col2.metric(f"Beklenen aylık gelir (~{payout_years} yıl ömür)", tl(annuity_monthly))
+
+# yıllara göre bakiye çizgisi (yearly)
+balances = []
+balance = 0.0
+for y in range(1, years_to_retire + 1):
+    # yıllık contribution:
+    annual_contrib = monthly_contrib * 12
+    if monthly_rate == 0:
+        balance = balance + annual_contrib
+    else:
+        # grow previous balance for 12 months
+        balance = balance * (1 + monthly_rate) ** 12 + annual_contrib * (( (1 + monthly_rate) ** 12 - 1) / monthly_rate)
+    balances.append({"Yıl": y, "Bakiye": round(balance, 2)})
+
+bal_df = pd.DataFrame(balances)
+# chart
+line = alt.Chart(bal_df).mark_line(point=True).encode(
+    x=alt.X("Yıl:O", title="Yıl"),
+    y=alt.Y("Bakiye:Q", title="Bakiye (TL)"),
+    tooltip=[alt.Tooltip("Yıl:O"), alt.Tooltip("Bakiye:Q", format=".2f")]
+).properties(height=240, title="Projeksiyon: Yıllara Göre BES Bakiyesi (basit model)")
+
+st.altair_chart(line, use_container_width=True)
 
 st.markdown(
-    f"<div style='color:#6b7280;font-size:12px;margin-top:12px'>Veri: simülasyon (log-normal spend model). Oluşturuldu: {datetime.utcnow().date().isoformat()}</div>",
-    unsafe_allow_html=True
+    f"**Kısa yorum:** Eğer ayda ortalama {tl(monthly_contrib)} yatırılırsa ve yıllık net getiri %{(net_annual*100):.2f} alınırsa, {years_to_retire} yıl sonra yaklaşık **{tl(fv)}** birikmiş olur. "
+    f"Bu bakiye, emeklilikte yılda %{payout_annual_return*100:.1f} getiri ve {payout_years} yıl ödeme varsayımlarına göre yaklaşık **{tl(annuity_monthly)}**/ay verir."
 )
 
+st.markdown(f"<div style='color: #6b7280; font-size:12px'>Simülasyon oluşturuldu: {datetime.utcnow().date().isoformat()}</div>", unsafe_allow_html=True)
