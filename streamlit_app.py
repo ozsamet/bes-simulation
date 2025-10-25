@@ -30,10 +30,9 @@ CATEGORY_SCALE = {
     "Giyim":1.8, "Elektronik":2.4, "Online Alışveriş":1.6, "Fatura/Servis":2.2
 }
 PACKAGE_BASES = {"5'lik Yuvarla": 5, "10'luk Yuvarla": 10, "20'lik Yuvarla": 20}
-
 TRIALS = 3000
 SEED = 123
-DAYS = 30  # 1 ay sabit
+DAYS = 30  # sabit
 
 # ---------- simülasyon (cache) ----------
 @st.cache_data(show_spinner=False)
@@ -118,7 +117,7 @@ st.altair_chart(hist + density + rule_med + rule_mean, use_container_width=True)
 
 st.markdown("---")
 
-# ---------- BES PROJEKSİYONU (kurumsal & sade) ----------
+# ---------- BES PROJEKSİYONU (3 alternatif aynı grafikte) ----------
 st.subheader("💰 BES Projeksiyonu")
 
 colA, colB = st.columns([1,1])
@@ -127,31 +126,47 @@ with colA:
 with colB:
     expected_return = st.slider("Beklenen Yıllık Getiri (%)", 0.0, 20.0, 8.0, 0.5)
 
-monthly_typical = median_v  # daha tutucu: medyanı baz al
+monthly_typical = median_v  # medyan daha tutucu
 balance_fv      = fv_of_monthly(monthly_typical, expected_return, years_in_system)
 
-# Alternatif ödeme süreleri (15 / 20 / 25 yıl), emeklilik dönemi getiri varsayımı: %4
+# Alternatif ödeme süreleri (15/20/25 yıl) — emeklilik dönemi getiri varsayımı %4
 ret_rate_post = 4.0
-annuity_15 = level_annuity_from_lump(balance_fv, ret_rate_post, 15)
-annuity_20 = level_annuity_from_lump(balance_fv, ret_rate_post, 20)
-annuity_25 = level_annuity_from_lump(balance_fv, ret_rate_post, 25)
+alts = []
+for yrs in (15, 20, 25):
+    alts.append({
+        "Ödeme Süresi (Yıl)": yrs,
+        "Aylık Ödeme (TL)": level_annuity_from_lump(balance_fv, ret_rate_post, yrs)
+    })
+alt_df = pd.DataFrame(alts)
 
-# Kurumsal mini bilgi kartları
+# Mini kartlar
 c1, c2, c3 = st.columns(3)
 c1.metric("Tipik Aylık Katkı", tl(monthly_typical))
-c2.metric("Projeksiyon Bakiyesi (Emeklilik Başlangıcı)", tl(balance_fv))
-c3.metric("Varsayılan Emeklilik Getirisi", f"%{ret_rate_post:.1f}")
+c2.metric("Projeksiyon Bakiyesi", tl(balance_fv))
+c3.metric("Emeklilik Dönemi Getirisi", f"%{ret_rate_post:.1f}")
 
-d1, d2, d3 = st.columns(3)
-d1.metric("Eşit Aylık Ödeme — 15 Yıl", tl(annuity_15))
-d2.metric("Eşit Aylık Ödeme — 20 Yıl", tl(annuity_20))
-d3.metric("Eşit Aylık Ödeme — 25 Yıl", tl(annuity_25))
+# Tek grafikte üç alternatif (sütun grafik + değer etiketleri)
+bars = alt.Chart(alt_df).mark_bar().encode(
+    x=alt.X("Ödeme Süresi (Yıl):O", title="Ödeme Süresi"),
+    y=alt.Y("Aylık Ödeme (TL):Q", title="Aylık Ödeme (TL)"),
+    tooltip=[alt.Tooltip("Ödeme Süresi (Yıl):O"), alt.Tooltip("Aylık Ödeme (TL):Q", format=".2f")]
+).properties(height=280, title="Eşit Aylık Ödeme — 15 / 20 / 25 Yıl")
 
-# Kısa, kurumsal özet
+labels = alt.Chart(alt_df).mark_text(dy=-5).encode(
+    x="Ödeme Süresi (Yıl):O",
+    y="Aylık Ödeme (TL):Q",
+    text=alt.Text("Aylık Ödeme (TL):Q", format=".0f")
+)
+
+st.altair_chart(bars + labels, use_container_width=True)
+
+# Kısa kurumsal özet
 st.markdown(
-    f"**Özet:** {years_in_system} yıl süresince aylık ~{tl(monthly_typical)} katkı ve yıllık %{expected_return:.1f} getiri varsayımıyla "
-    f"emeklilik başlangıcında yaklaşık {tl(balance_fv)} birikim hedeflenir. Bu tutar; 15/20/25 yıl eşit ödemede sırasıyla "
-    f"{tl(annuity_15)} / {tl(annuity_20)} / {tl(annuity_25)} aylık nakit akışına karşılık gelir."
+    f"**Özet:** {years_in_system} yıl sistemde kalıp aylık ~{tl(monthly_typical)} katkı ve yıllık %{expected_return:.1f} getiride "
+    f"emeklilik başlangıcında ~{tl(balance_fv)} birikim; bu tutar 15/20/25 yılda sırasıyla "
+    f"{tl(alt_df.loc[alt_df['Ödeme Süresi (Yıl)']==15, 'Aylık Ödeme (TL)'].iloc[0])} / "
+    f"{tl(alt_df.loc[alt_df['Ödeme Süresi (Yıl)']==20, 'Aylık Ödeme (TL)'].iloc[0])} / "
+    f"{tl(alt_df.loc[alt_df['Ödeme Süresi (Yıl)']==25, 'Aylık Ödeme (TL)'].iloc[0])} aylık ödemeye karşılık gelir."
 )
 
 st.markdown(f"<div style='color:#6b7280;font-size:12px'>Oluşturulma: {datetime.utcnow().date().isoformat()}</div>", unsafe_allow_html=True)
