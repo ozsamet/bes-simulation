@@ -69,15 +69,6 @@ def fv_of_monthly(monthly_amount: float, annual_return_pct: float, years: int) -
         return monthly_amount * n
     return monthly_amount * (((1 + r_m) ** n - 1) / r_m)
 
-def level_annuity_from_lump(lump: float, annual_rate_pct: float, years: int) -> float:
-    r_m = (annual_rate_pct / 100.0) / 12.0
-    n = years * 12
-    if n <= 0:
-        return 0.0
-    if abs(r_m) < 1e-12:
-        return lump / n
-    return lump * r_m / (1 - (1 + r_m) ** (-n))
-
 # ---------- UI ----------
 st.title("📈 Ay Sonu Dağılımı — Üstü BES’te Kalsın")
 
@@ -117,7 +108,7 @@ st.altair_chart(hist + density + rule_med + rule_mean, use_container_width=True)
 
 st.markdown("---")
 
-# ---------- BES PROJEKSİYONU (3 alternatif aynı grafikte) ----------
+# ---------- BES PROJEKSİYONU (tek senaryo, line chart) ----------
 st.subheader("💰 BES Projeksiyonu")
 
 colA, colB = st.columns([1,1])
@@ -126,47 +117,42 @@ with colA:
 with colB:
     expected_return = st.slider("Beklenen Yıllık Getiri (%)", 0.0, 20.0, 8.0, 0.5)
 
-monthly_typical = median_v  # medyan daha tutucu
+monthly_typical = median_v  # tutucu varsayım: medyan
 balance_fv      = fv_of_monthly(monthly_typical, expected_return, years_in_system)
 
-# Alternatif ödeme süreleri (15/20/25 yıl) — emeklilik dönemi getiri varsayımı %4
-ret_rate_post = 4.0
-alts = []
-for yrs in (15, 20, 25):
-    alts.append({
-        "Ödeme Süresi (Yıl)": yrs,
-        "Aylık Ödeme (TL)": level_annuity_from_lump(balance_fv, ret_rate_post, yrs)
-    })
-alt_df = pd.DataFrame(alts)
+# Yıllara göre birikim (çizgi grafik)
+balances = []
+r_m = (expected_return/100.0)/12.0
+bal = 0.0
+for y in range(1, years_in_system+1):
+    annual_c = monthly_typical * 12
+    if abs(r_m) < 1e-12:
+        bal = bal + annual_c
+    else:
+        bal = bal * (1 + r_m) ** 12 + annual_c * (((1 + r_m) ** 12 - 1) / r_m)
+    balances.append({"Yıl": y, "Bakiye": round(bal, 2)})
 
-# Mini kartlar
+bal_df = pd.DataFrame(balances)
+line_bal = alt.Chart(bal_df).mark_line(point=True).encode(
+    x=alt.X("Yıl:O", title="Yıl"),
+    y=alt.Y("Bakiye:Q", title="Bakiye (TL)"),
+    tooltip=[alt.Tooltip("Yıl:O"), alt.Tooltip("Bakiye:Q", format=".2f")]
+).properties(height=260, title="Projeksiyon: Yıllara Göre BES Bakiyesi")
+st.altair_chart(line_bal, use_container_width=True)
+
+# Mini kartlar: etkiyi net göster
+total_principal = monthly_typical * 12 * years_in_system
+gain_component  = max(0.0, balance_fv - total_principal)
+
 c1, c2, c3 = st.columns(3)
 c1.metric("Tipik Aylık Katkı", tl(monthly_typical))
-c2.metric("Projeksiyon Bakiyesi", tl(balance_fv))
-c3.metric("Emeklilik Dönemi Getirisi", f"%{ret_rate_post:.1f}")
+c2.metric("Toplam Katkı (Ana Para)", tl(total_principal))
+c3.metric("Getiri Kazancı", tl(gain_component))
 
-# Tek grafikte üç alternatif (sütun grafik + değer etiketleri)
-bars = alt.Chart(alt_df).mark_bar().encode(
-    x=alt.X("Ödeme Süresi (Yıl):O", title="Ödeme Süresi"),
-    y=alt.Y("Aylık Ödeme (TL):Q", title="Aylık Ödeme (TL)"),
-    tooltip=[alt.Tooltip("Ödeme Süresi (Yıl):O"), alt.Tooltip("Aylık Ödeme (TL):Q", format=".2f")]
-).properties(height=280, title="Eşit Aylık Ödeme — 15 / 20 / 25 Yıl")
-
-labels = alt.Chart(alt_df).mark_text(dy=-5).encode(
-    x="Ödeme Süresi (Yıl):O",
-    y="Aylık Ödeme (TL):Q",
-    text=alt.Text("Aylık Ödeme (TL):Q", format=".0f")
-)
-
-st.altair_chart(bars + labels, use_container_width=True)
-
-# Kısa kurumsal özet
+# Kısa özet
 st.markdown(
-    f"**Özet:** {years_in_system} yıl sistemde kalıp aylık ~{tl(monthly_typical)} katkı ve yıllık %{expected_return:.1f} getiride "
-    f"emeklilik başlangıcında ~{tl(balance_fv)} birikim; bu tutar 15/20/25 yılda sırasıyla "
-    f"{tl(alt_df.loc[alt_df['Ödeme Süresi (Yıl)']==15, 'Aylık Ödeme (TL)'].iloc[0])} / "
-    f"{tl(alt_df.loc[alt_df['Ödeme Süresi (Yıl)']==20, 'Aylık Ödeme (TL)'].iloc[0])} / "
-    f"{tl(alt_df.loc[alt_df['Ödeme Süresi (Yıl)']==25, 'Aylık Ödeme (TL)'].iloc[0])} aylık ödemeye karşılık gelir."
+    f"**Özet:** {years_in_system} yıl boyunca aylık ~{tl(monthly_typical)} katkı ve yıllık %{expected_return:.1f} getiri varsayımıyla "
+    f"emeklilik başlangıcında yaklaşık **{tl(balance_fv)}** birikim oluşur."
 )
 
 st.markdown(f"<div style='color:#6b7280;font-size:12px'>Oluşturulma: {datetime.utcnow().date().isoformat()}</div>", unsafe_allow_html=True)
