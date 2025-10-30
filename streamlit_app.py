@@ -158,7 +158,7 @@ gain_component_round  = max(0.0, balance_fv_roundup - total_principal_round)
 
 c1, c2, c3 = st.columns(3)
 c1.metric("Tipik Aylık Yuvarlama Katkısı", tl(monthly_typical))
-c2.metric("Yuvarlamadan Toplam Ana Para", tl(total_principal_round))
+c2.metric("Yuvarlamalardan Gelen Toplam Ana Para", tl(total_principal_round))
 c3.metric("Yuvarlamadan Getiri Kazancı", tl(gain_component_round))
 
 uplift_monthly_pct = (monthly_typical / fixed_monthly) * 100.0 if fixed_monthly > 0 else None
