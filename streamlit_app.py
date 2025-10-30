@@ -31,7 +31,7 @@ CATEGORY_SCALE = {
     "Giyim":1.8, "Elektronik":2.4, "Online Alışveriş":1.6, "Fatura/Servis":2.2
 }
 PACKAGE_BASES = {"5'lik Yuvarla": 5, "10'luk Yuvarla": 10, "20'lik Yuvarla": 20}
-TRIALS = 2000
+TRIALS = 3000
 SEED = 123
 DAYS = 31
 
