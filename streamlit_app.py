@@ -56,22 +56,19 @@ def simulate_month_poisson(base: int,
         return pd.DataFrame({"Toplam_Katki_TL": np.zeros(trials, dtype=np.float64)})
 
     # 2) Tüm işlemler için kategori ve tutarları topluca üret
-    #    a) Kategoriler
     cat_idx = rng.choice(len(cats), size=total_tx, p=probs, shuffle=True)
     scale_vec = np.array([CATEGORY_SCALE[c] for c in cats], dtype=np.float64)
 
-    #    b) İşlem tutarı: lognormal * kategori ölçeği * 1.15, alt sınır 5 TL
+    # 3) İşlem tutarı: lognormal * kategori ölçeği * 1.15, alt sınır 5 TL
     amounts = rng.lognormal(mean=3.6, sigma=0.5, size=total_tx)
     amounts = np.maximum(5.0, amounts * scale_vec[cat_idx] * 1.15)
 
-    # 3) Yuvarlama katkısı (tamamen vektörize)
-    #    katkı = (base - (round(amount) % base)) % base
+    # 4) Yuvarlama katkısı (tamamen vektörize)
     amt_int = np.rint(amounts).astype(np.int64)
     contrib = (base - (amt_int % base)) % base
     contrib = contrib.astype(np.float64)
 
-    # 4) İşlemleri denemelere dağıt ve topla (np.add.at ile scatter-add)
-    #    trial_ids: [0,0,...,0, 1,1,..., 2,2,...] gibi
+    # 5) İşlemleri denemelere dağıt ve topla
     trial_ids = np.repeat(np.arange(trials, dtype=np.int64), n_per_trial)
     totals = np.zeros(trials, dtype=np.float64)
     np.add.at(totals, trial_ids, contrib)
@@ -79,6 +76,7 @@ def simulate_month_poisson(base: int,
     return pd.DataFrame({"Toplam_Katki_TL": totals})
 
 def fv_of_monthly(monthly_amount: float, annual_return_pct: float, years: int) -> float:
+    """Aylık eşit katkıların gelecek değeri (standart annüite formülü)."""
     r_m = (annual_return_pct / 100.0) / 12.0
     n = years * 12
     if abs(r_m) < 1e-12:
@@ -131,22 +129,20 @@ with colB:
 with colC:
     fixed_monthly: int = st.number_input("Aylık Fix Katkı Payın (TL)", min_value=0, value=1750, step=50, format="%d")
 
+# --- Aylık tipik yuvarlama + fix katkı
 monthly_typical = median_v
+monthly_total   = fixed_monthly + monthly_typical
+
+# --- Gelecek değerler (metrikler)
 balance_fv_roundup  = fv_of_monthly(monthly_typical, expected_return, years_in_system)
 balance_fv_fixed    = fv_of_monthly(fixed_monthly, expected_return, years_in_system)
-balance_fv_both     = fv_of_monthly(fixed_monthly + monthly_typical, expected_return, years_in_system)
+balance_fv_both     = fv_of_monthly(monthly_total, expected_return, years_in_system)
+
 
 balances = []
-r_m = (expected_return/100.0)/12.0
-bal = 0.0
-monthly_total = fixed_monthly + monthly_typical
 for y in range(1, years_in_system+1):
-    annual_c = monthly_total * 12
-    if abs(r_m) < 1e-12:
-        bal = bal + annual_c
-    else:
-        bal = bal * (1 + r_m) ** 12 + annual_c * (((1 + r_m) ** 12 - 1) / r_m)
-    balances.append({"Yıl": y, "Bakiye": round(bal, 2)})
+    bal_y = fv_of_monthly(monthly_total, expected_return, y)  # her yılın sonundaki FV
+    balances.append({"Yıl": y, "Bakiye": round(bal_y, 2)})
 
 bal_df = pd.DataFrame(balances)
 line_bal = alt.Chart(bal_df).mark_line(point=True).encode(
@@ -156,6 +152,7 @@ line_bal = alt.Chart(bal_df).mark_line(point=True).encode(
 ).properties(height=260, title="Projeksiyon: Yıllara Göre BES Bakiyesi (Fix + Yuvarlama)")
 st.altair_chart(line_bal, use_container_width=True)
 
+
 total_principal_round = monthly_typical * 12 * years_in_system
 gain_component_round  = max(0.0, balance_fv_roundup - total_principal_round)
 
@@ -164,12 +161,8 @@ c1.metric("Tipik Aylık Yuvarlama Katkısı", tl(monthly_typical))
 c2.metric("Yuvarlamadan Toplam Ana Para", tl(total_principal_round))
 c3.metric("Yuvarlamadan Getiri Kazancı", tl(gain_component_round))
 
-uplift_monthly_pct = None
-if fixed_monthly > 0:
-    uplift_monthly_pct = (monthly_typical / fixed_monthly) * 100.0
-uplift_balance_pct = None
-if balance_fv_fixed > 1e-9:
-    uplift_balance_pct = ((balance_fv_both - balance_fv_fixed) / balance_fv_fixed) * 100.0
+uplift_monthly_pct = (monthly_typical / fixed_monthly) * 100.0 if fixed_monthly > 0 else None
+uplift_balance_pct = ((balance_fv_both - balance_fv_fixed) / balance_fv_fixed) * 100.0 if balance_fv_fixed > 1e-9 else None
 
 d1, d2, d3 = st.columns(3)
 d1.metric("Fix Aylık Katkı", tl(float(fixed_monthly)))
