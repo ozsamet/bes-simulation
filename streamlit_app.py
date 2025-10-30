@@ -85,11 +85,17 @@ def fv_of_monthly(monthly_amount: float, annual_return_pct: float, years: int) -
 
 st.title("📈 Ay Sonu Dağılımı — Üstü BES’te Kalsın")
 
-col1, col2 = st.columns([1,1])
+col1, col2, col3 = st.columns([1, 1.6, 0.8])
+
 with col1:
     package_label = st.selectbox("Yuvarlama Paketi", list(PACKAGE_BASES.keys()), index=1)
+
 with col2:
-    mean_tx = st.slider("Günlük Ortalama İşlem (λ)", 0.5, 8.0, 2.0, 0.5)
+    mean_tx = st.slider("Günlük Ortalama İşlem (λ)", 0.5, 8.0, 3.0, 0.5)
+
+with col3:
+    monthly_tx_est = mean_tx * 30  # kullanıcı isteği: basitçe 30 ile çarp
+    st.metric("Aylık Ortalama İşlem", f"{monthly_tx_est:.0f} adet")
 
 st.markdown("---")
 
